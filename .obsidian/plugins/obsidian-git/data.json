@@ -1,7 +1,7 @@
 {
   "commitMessage": "vault backup: {{date}}",
   "autoCommitMessage": "vault backup: {{date}}",
-  "commitMessageScript": "claude -p \"give me a commit message\"",
+  "commitMessageScript": "claude -p \"give me commit message\"",
   "commitDateFormat": "YYYY-MM-DD HH:mm:ss",
   "autoSaveInterval": 1,
   "autoPushInterval": 0,

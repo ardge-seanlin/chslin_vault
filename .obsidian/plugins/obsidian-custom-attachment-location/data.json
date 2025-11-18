@@ -14,7 +14,7 @@
   "jpegQuality": 0.8,
   "markdownUrlFormat": "assets/${noteFileName}/${generatedAttachmentFileName}",
   "shouldConvertPastedImagesToJpeg": false,
-  "shouldDeleteOrphanAttachments": false,
+  "shouldDeleteOrphanAttachments": true,
   "shouldRenameAttachmentFiles": true,
   "shouldRenameAttachmentFolder": true,
   "shouldRenameCollectedAttachments": false,

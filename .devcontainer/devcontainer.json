@@ -1,0 +1,48 @@
+{
+  "name": "Go DevContainer",
+  "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
+
+  "features": {
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {},
+    "ghcr.io/ardge-labs/devcontainer-features/mise:1": {}
+  },
+
+  "runArgs": [
+    "--network=host"
+  ],
+
+  "customizations": {
+    "vscode": {
+      "settings": {
+        "dev.containers.dockerCredentialHelper": false,
+        "terminal.integrated.shell.linux": "/bin/bash"
+      },
+      "extensions": [
+        "ms-kubernetes-tools.vscode-kubernetes-tools",
+        "ms-azuretools.vscode-docker"
+      ]
+    }
+  },
+
+  "onCreateCommand": "bash .devcontainer/setup.sh",
+  "postCreateCommand": "bash .devcontainer/post-setup.sh",
+
+  "containerEnv": {
+    "CLAUDE_CONFIG_DIR": "/home/vscode/.claude",
+    "GITHUB_USERNAME": "${localEnv:GITHUB_USERNAME}",
+    "GITHUB_TOKEN": "${localEnv:GITHUB_TOKEN}",
+    "LC_ALL": "en_US.UTF-8",
+    "MIRROR_CONTAINER_REGISTRY": "${localEnv:MIRROR_CONTAINER_REGISTRY}",
+    "MISE_CONFIG_FILE": "${containerWorkspaceFolder}/.devcontainer/mise.toml",
+    "TERM": "xterm-256color",
+    "TZ": "Asia/Taipei"
+  },
+
+  "mounts": [
+    "source=${localEnv:HOME}/.claude,target=/home/vscode/.claude,type=bind,consistency=cached",
+    "source=${localEnv:HOME}/.gitconfig,target=/home/vscode/.gitconfig,type=bind,consistency=cached",
+    "source=${localEnv:HOME}/.ssh,target=/home/vscode/.ssh,type=bind,consistency=cached"
+  ],
+
+  "remoteUser": "vscode"
+}

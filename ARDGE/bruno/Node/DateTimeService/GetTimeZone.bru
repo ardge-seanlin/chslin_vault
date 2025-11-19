@@ -1,0 +1,20 @@
+meta {
+  name: GetTimeZone
+  type: grpc
+  seq: 3
+}
+
+grpc {
+  url: {{grpc_host}}:{{grpc_port}}
+  method: /arx.node.v1.DateTimeService/GetTimeZone
+  body: grpc
+  auth: inherit
+  methodType: unary
+}
+
+body:grpc {
+  name: message 1
+  content: '''
+    {}
+  '''
+}

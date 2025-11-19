@@ -1,0 +1,23 @@
+meta {
+  name: ListModelVersions
+  type: grpc
+  seq: 4
+}
+
+grpc {
+  url: {{grpc_host}}:{{grpc_port}}
+  method: /arx.marketplace.v1.ModelService/ListModelVersions
+  body: grpc
+  auth: inherit
+  methodType: unary
+}
+
+body:grpc {
+  name: message 1
+  content: '''
+    {
+      "collection_id": "library.models.gpt-oss",
+      "sort_order": "asc"
+    }
+  '''
+}

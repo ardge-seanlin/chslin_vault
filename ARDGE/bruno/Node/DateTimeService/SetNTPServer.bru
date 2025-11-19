@@ -1,0 +1,22 @@
+meta {
+  name: SetNTPServer
+  type: grpc
+  seq: 6
+}
+
+grpc {
+  url: {{grpc_host}}:{{grpc_port}}
+  method: /arx.node.v1.DateTimeService/SetNTPServer
+  body: grpc
+  auth: inherit
+  methodType: unary
+}
+
+body:grpc {
+  name: message 1
+  content: '''
+    {
+      "server": "pool.ntp.org"
+    }
+  '''
+}

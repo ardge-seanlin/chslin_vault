@@ -1,0 +1,22 @@
+meta {
+  name: SetTimeZone
+  type: grpc
+  seq: 4
+}
+
+grpc {
+  url: {{grpc_host}}:{{grpc_port}}
+  method: /arx.node.v1.DateTimeService/SetTimeZone
+  body: grpc
+  auth: inherit
+  methodType: unary
+}
+
+body:grpc {
+  name: message 1
+  content: '''
+    {
+      "timezone": "UTC"
+    }
+  '''
+}

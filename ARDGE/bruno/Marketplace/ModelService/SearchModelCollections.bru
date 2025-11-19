@@ -1,0 +1,26 @@
+meta {
+  name: SearchModelCollections
+  type: grpc
+  seq: 2
+}
+
+grpc {
+  url: {{grpc_host}}:{{grpc_port}}
+  method: /arx.marketplace.v1.ModelService/ListModelCollections
+  body: grpc
+  auth: inherit
+  methodType: unary
+}
+
+body:grpc {
+  name: message 1
+  content: '''
+    {
+      "query": "gemma3",
+      "page": 1,
+      "page_size": 20,
+      "sort_by": 1,
+      "sort_order": 1
+    }
+  '''
+}

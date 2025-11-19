@@ -1,0 +1,26 @@
+meta {
+  name: Validate
+  type: grpc
+  seq: 1
+}
+
+grpc {
+  url: {{grpc_host}}:{{grpc_port}}
+  method: /arx.marketplace.v1.RepositoryService/Validate
+  body: grpc
+  auth: inherit
+  methodType: unary
+}
+
+body:grpc {
+  name: message 1
+  content: '''
+    {
+      "repository_source": {
+        "id": "default",
+        "uri": "ghcr.io/ardge-labs/arx-marketplace-templates:dev",
+        "extract_path": "/tmp/marketplace-templates"
+      }
+    }
+  '''
+}

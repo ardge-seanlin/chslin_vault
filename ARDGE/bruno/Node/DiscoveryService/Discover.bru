@@ -1,0 +1,24 @@
+meta {
+  name: Discover
+  type: grpc
+  seq: 1
+}
+
+grpc {
+  url: {{grpc_host}}:{{grpc_port}}
+  method: /arx.node.v1.DiscoveryService/Discover
+  body: grpc
+  auth: inherit
+  methodType: server-streaming
+}
+
+body:grpc {
+  name: message 1
+  content: '''
+    {
+      "timeout": {
+        "nanos": 1000000
+      }
+    }
+  '''
+}

@@ -1,0 +1,23 @@
+meta {
+  name: GetApplication
+  type: grpc
+  seq: 3
+}
+
+grpc {
+  url: {{grpc_host}}:{{grpc_port}}
+  method: /arx.marketplace.v1.ApplicationService/GetApplication
+  body: grpc
+  auth: inherit
+  methodType: unary
+}
+
+body:grpc {
+  name: message 1
+  content: '''
+    {
+      "id": "ardge.apps.argent",
+      "language": "en-US"
+    }
+  '''
+}

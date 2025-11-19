@@ -1,0 +1,9 @@
+{
+  "version": "1",
+  "name": "ARX Platform Core",
+  "type": "collection",
+  "presets": {
+    "requestType": "grpc",
+    "requestUrl": "{{grpc_host}}:{{grpc_port}}"
+  }
+}

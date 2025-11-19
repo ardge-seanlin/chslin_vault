@@ -1,0 +1,24 @@
+meta {
+  name: GetModelVersion
+  type: grpc
+  seq: 5
+}
+
+grpc {
+  url: {{grpc_host}}:{{grpc_port}}
+  method: /arx.marketplace.v1.ModelService/GetModelVersion
+  body: grpc
+  auth: inherit
+  methodType: unary
+}
+
+body:grpc {
+  name: message 1
+  content: '''
+    {
+      "collection_id": "library.models.gpt-oss",
+      "version_params": "20b",
+      "language": "en-US"
+    }
+  '''
+}

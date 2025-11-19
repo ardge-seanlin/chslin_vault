@@ -1,0 +1,20 @@
+meta {
+  name: GetTime
+  type: grpc
+  seq: 1
+}
+
+grpc {
+  url: {{grpc_host}}:{{grpc_port}}
+  method: /arx.node.v1.DateTimeService/GetTime
+  body: grpc
+  auth: inherit
+  methodType: unary
+}
+
+body:grpc {
+  name: message 1
+  content: '''
+    {}
+  '''
+}

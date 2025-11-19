@@ -1,0 +1,23 @@
+meta {
+  name: GetMCPServerTools
+  type: grpc
+  seq: 4
+}
+
+grpc {
+  url: {{grpc_host}}:{{grpc_port}}
+  method: /arx.marketplace.v1.MCPService/GetMCPServerTools
+  body: grpc
+  auth: inherit
+  methodType: unary
+}
+
+body:grpc {
+  name: message 1
+  content: '''
+    {
+      "id": "library.mcp.firecrawl",
+      "language": "en-US"
+    }
+  '''
+}

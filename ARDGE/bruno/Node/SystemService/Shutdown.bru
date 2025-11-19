@@ -1,0 +1,22 @@
+meta {
+  name: Shutdown
+  type: grpc
+  seq: 2
+}
+
+grpc {
+  url: {{grpc_host}}:{{grpc_port}}
+  method: /arx.node.v1.SystemService/Shutdown
+  body: grpc
+  auth: inherit
+  methodType: unary
+}
+
+body:grpc {
+  name: message 1
+  content: '''
+    {
+      "delay_seconds": 10
+    }
+  '''
+}

@@ -1,0 +1,20 @@
+meta {
+  name: ListApplications
+  type: grpc
+  seq: 1
+}
+
+grpc {
+  url: {{grpc_host}}:{{grpc_port}}
+  method: /arx.marketplace.v1.ApplicationService/ListApplications
+  body: grpc
+  auth: inherit
+  methodType: unary
+}
+
+body:grpc {
+  name: message 1
+  content: '''
+    {}
+  '''
+}

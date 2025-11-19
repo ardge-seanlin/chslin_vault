@@ -1,0 +1,26 @@
+meta {
+  name: SearchApplications
+  type: grpc
+  seq: 2
+}
+
+grpc {
+  url: {{grpc_host}}:{{grpc_port}}
+  method: /arx.marketplace.v1.ApplicationService/ListApplications
+  body: grpc
+  auth: inherit
+  methodType: unary
+}
+
+body:grpc {
+  name: message 1
+  content: '''
+    {
+      "query": "llm",
+      "page": 1,
+      "page_size": 20,
+      "sort_by": 1,
+      "sort_order": 1
+    }
+  '''
+}

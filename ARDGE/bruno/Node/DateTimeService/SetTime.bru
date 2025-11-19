@@ -1,0 +1,22 @@
+meta {
+  name: SetTime
+  type: grpc
+  seq: 2
+}
+
+grpc {
+  url: {{grpc_host}}:{{grpc_port}}
+  method: /arx.node.v1.DateTimeService/SetTime
+  body: grpc
+  auth: inherit
+  methodType: unary
+}
+
+body:grpc {
+  name: message 1
+  content: '''
+    {
+      "unix_timestamp": "1700000000"
+    }
+  '''
+}

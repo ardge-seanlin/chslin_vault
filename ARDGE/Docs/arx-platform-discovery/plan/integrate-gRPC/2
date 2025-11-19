@@ -1,0 +1,696 @@
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+ Advertiser 功能實現 - Commit 規劃
+
+ 需求確認
+
+ 1. ✅ mDNS Advertiser 隨 gRPC 啟動，每 5 分鐘更新 TXT records
+ 2. ✅ gRPC Discover RPC 按需 scan，streaming 回傳
+ 3. ✅ 修復 domain 問題（確保使用 "local."）
+ 4. ✅ 將更新間隔設為常數
+
+ ---
+ Commit 規劃
+
+ Commit 1: Fix domain format in mdns validation
+
+ fix(mdns): ensure domain uses "local." with trailing dot
+
+ Verify DefaultDomain constant is "local." as per RFC 6762.
+ This aligns with zeroconf library expectations.
+
+ 修改檔案：
+ - 檢查：internal/mdns/validation.go（確認 DefaultDomain = "local."）
+
+ 內容：
+ const (
+     // DefaultDomain is the default mDNS domain
+     DefaultDomain = "local."  // ✅ 確保有 trailing dot
+
+     // ... 其他常數
+ )
+
+ 如果已經正確就不修改，只是確認。
+
+ ---
+ Commit 2: Add TXT update interval constant
+
+ feat(mdns): add constant for TXT records update interval
+
+ Define DefaultTXTUpdateInterval as 5 minutes for periodic
+ device information updates in mDNS advertisements.
+
+ 修改檔案：
+ - 修改：internal/mdns/validation.go
+
+ 新增內容：
+ const (
+     MaxServiceNameLength = 63
+     MinServicePort = 1
+     MaxServicePort = 65535
+     DefaultDomain = "local."
+     DefaultAdvertiserTTL = 120
+     DefaultScanTimeout = 2 * time.Second
+     EntriesBufferSize = 10
+     MinScanInterval = 500 * time.Millisecond
+
+     // DefaultTXTUpdateInterval is the default interval for updating TXT records
+     DefaultTXTUpdateInterval = 5 * time.Minute  // ⭐ 新增
+ )
+
+ ---
+ Commit 3: Add device TXT builder function
+
+ feat(device): add BuildTXT to convert DeviceInfo to mDNS TXT records
+
+ Convert device information to key-value TXT records for mDNS advertisement.
+ Use short keys: id, model, bios, platform, port, tls, cores, mem.
+
+ 修改檔案：
+ - 新增：internal/device/txt.go
+
+ 內容：
+ package device
+
+ import (
+     "fmt"
+     "strconv"
+ )
+
+ // BuildTXT converts DeviceInfo to mDNS TXT records.
+ func BuildTXT(info *DeviceInfo) (map[string]string, error) {
+     if info == nil {
+         return nil, fmt.Errorf("device info is nil")
+     }
+
+     return map[string]string{
+         "id":       info.DeviceID,
+         "model":    info.ModelName,
+         "bios":     info.BIOSVersion,
+         "platform": info.PlatformVersion,
+         "port":     strconv.Itoa(info.APIPort),
+         "tls":      strconv.FormatBool(info.TLSSupport),
+         "cores":    strconv.Itoa(info.CPUCores),
+         "mem":      strconv.FormatInt(info.Memory, 10),
+     }, nil
+ }
+
+ ---
+ Commit 4: Integrate mDNS Advertiser into Manager
+
+ feat(server): integrate mDNS Advertiser with periodic TXT update
+
+ - Add Advertiser and Scanner to Manager
+ - Start advertising when Manager starts
+ - Update TXT records every 5 minutes via device.Collector
+ - Provide GetScanner() for gRPC handler access
+ - Use mdns.DefaultTXTUpdateInterval constant
+
+ 修改檔案：
+ - 修改：internal/server/manager.go
+
+ 關鍵改動：
+
+ package server
+
+ import (
+     "context"
+     "fmt"
+     "log/slog"
+     "os"
+     "sync"
+     "time"
+
+     "github.com/ardge-labs/arx-platform-discover/internal/device"
+     "github.com/ardge-labs/arx-platform-discover/internal/mdns"
+ )
+
+ type Manager struct {
+     grpcSrv    *Server
+     advertiser *mdns.Advertiser
+     scanner    *mdns.Scanner
+     collector  *device.Collector
+
+     updateInterval time.Duration  // TXT update interval
+
+     logger  *slog.Logger
+     mu      sync.Mutex
+     running bool
+ }
+
+ type ManagerConfig struct {
+     GRPC   *Config
+     MDNS   *MDNSConfig
+     Logger *slog.Logger
+ }
+
+ // MDNSConfig holds mDNS configuration.
+ type MDNSConfig struct {
+     ServiceName string
+     ServicePort int
+ }
+
+ func NewManager(config *ManagerConfig) (*Manager, error) {
+     // ... existing gRPC setup ...
+
+     m := &Manager{
+         grpcSrv: grpcSrv,
+         logger:  logger,
+     }
+
+     // Create mDNS components if configured
+     if config.MDNS != nil {
+         hostname, _ := os.Hostname()
+
+         // Create device collector
+         collector := device.NewCollector()
+         m.collector = collector
+
+         // Get initial device info and TXT records
+         deviceInfo, err := collector.Collect()
+         if err != nil {
+             return nil, fmt.Errorf("collect device info: %w", err)
+         }
+
+         txtRecords, err := device.BuildTXT(deviceInfo)
+         if err != nil {
+             return nil, fmt.Errorf("build TXT records: %w", err)
+         }
+
+         // Create Advertiser
+         advertiser, err := mdns.NewAdvertiser(
+             &mdns.AdvertiserConfig{
+                 ServiceName: config.MDNS.ServiceName,
+                 ServicePort: config.MDNS.ServicePort,
+                 Domain:      mdns.DefaultDomain,  // ✅ 使用常數
+                 TTL:         mdns.DefaultAdvertiserTTL,
+             },
+             hostname,
+             txtRecords,
+             logger,
+         )
+         if err != nil {
+             return nil, fmt.Errorf("create advertiser: %w", err)
+         }
+         m.advertiser = advertiser
+
+         // Create Scanner
+         scanner, err := mdns.NewScanner(
+             config.MDNS.ServiceName,
+             mdns.DefaultDomain,  // ✅ 使用常數
+             mdns.DefaultScanTimeout,
+             logger,
+         )
+         if err != nil {
+             return nil, fmt.Errorf("create scanner: %w", err)
+         }
+         m.scanner = scanner
+
+         // Set update interval
+         m.updateInterval = mdns.DefaultTXTUpdateInterval  // ✅ 5 分鐘
+
+         logger.Info("mDNS configured",
+             "service", config.MDNS.ServiceName,
+             "port", config.MDNS.ServicePort,
+             "update_interval", m.updateInterval,
+         )
+     }
+
+     return m, nil
+ }
+
+ func (m *Manager) Start(ctx context.Context) error {
+     m.mu.Lock()
+     if m.running {
+         m.mu.Unlock()
+         return fmt.Errorf("manager already running")
+     }
+     m.running = true
+     m.mu.Unlock()
+
+     m.logger.Info("starting manager")
+
+     // Start mDNS advertiser if configured
+     if m.advertiser != nil {
+         // Start advertising
+         go func() {
+             if err := m.advertiser.Start(ctx); err != nil {
+                 m.logger.Error("advertiser failed", "err", err)
+             }
+         }()
+
+         // Start periodic TXT update
+         if m.collector != nil {
+             go m.periodicUpdate(ctx)
+         }
+     }
+
+     // Wait for context cancellation
+     <-ctx.Done()
+     m.logger.Info("context cancelled, shutting down")
+     m.Stop()
+     return ctx.Err()
+ }
+
+ func (m *Manager) Stop() {
+     m.mu.Lock()
+     defer m.mu.Unlock()
+
+     if !m.running {
+         return
+     }
+
+     m.logger.Info("stopping manager")
+
+     if m.advertiser != nil {
+         m.advertiser.Stop()
+     }
+
+     if m.grpcSrv != nil {
+         m.grpcSrv.Stop()
+     }
+
+     m.running = false
+     m.logger.Info("manager stopped")
+ }
+
+ // periodicUpdate updates TXT records every 5 minutes.
+ func (m *Manager) periodicUpdate(ctx context.Context) {
+     ticker := time.NewTicker(m.updateInterval)
+     defer ticker.Stop()
+
+     m.logger.Info("starting periodic TXT update",
+         "interval", m.updateInterval,
+     )
+
+     for {
+         select {
+         case <-ctx.Done():
+             m.logger.Info("stopping TXT update loop")
+             return
+
+         case <-ticker.C:
+             m.logger.Debug("updating TXT records")
+
+             deviceInfo, err := m.collector.Collect()
+             if err != nil {
+                 m.logger.Error("collect device info failed", "err", err)
+                 continue
+             }
+
+             txtRecords, err := device.BuildTXT(deviceInfo)
+             if err != nil {
+                 m.logger.Error("build TXT failed", "err", err)
+                 continue
+             }
+
+             if err := m.advertiser.UpdateTXTRecords(ctx, txtRecords); err != nil {
+                 m.logger.Error("update TXT failed", "err", err)
+                 continue
+             }
+
+             m.logger.Info("TXT records updated successfully")
+         }
+     }
+ }
+
+ // GetScanner returns the scanner for gRPC handlers.
+ func (m *Manager) GetScanner() *mdns.Scanner {
+     return m.scanner
+ }
+
+ ---
+ Commit 5: Implement DiscoveryService gRPC handler
+
+ feat(server): implement DiscoveryService handler with streaming
+
+ - Add DiscoveryHandler for gRPC Discover RPC
+ - Perform on-demand scan when RPC is called
+ - Convert ServiceEntry to EdgeDevice protobuf
+ - Stream results back to client
+ - Support configurable timeout from request
+
+ 修改檔案：
+ - 新增：internal/server/discovery.go
+
+ 內容：
+ package server
+
+ import (
+     "context"
+     "errors"
+     "fmt"
+     "log/slog"
+     "strconv"
+     "time"
+
+     v1 "github.com/ardge-labs/arx-platform-discover/api/arx/node/v1"
+     "github.com/ardge-labs/arx-platform-discover/internal/mdns"
+ )
+
+ // DiscoveryHandler implements DiscoveryService gRPC server.
+ type DiscoveryHandler struct {
+     v1.UnimplementedDiscoveryServiceServer
+
+     manager *Manager
+     logger  *slog.Logger
+ }
+
+ // NewDiscoveryHandler creates a discovery handler.
+ func NewDiscoveryHandler(manager *Manager, logger *slog.Logger) *DiscoveryHandler {
+     if logger == nil {
+         logger = slog.Default()
+     }
+
+     return &DiscoveryHandler{
+         manager: manager,
+         logger:  logger.With("component", "discovery-handler"),
+     }
+ }
+
+ // Discover implements server-streaming RPC for device discovery.
+ func (h *DiscoveryHandler) Discover(
+     req *v1.DiscoverRequest,
+     stream v1.DiscoveryService_DiscoverServer,
+ ) error {
+     ctx := stream.Context()
+
+     // Parse timeout from request
+     timeout := 10 * time.Second
+     if req.Timeout != nil {
+         timeout = req.Timeout.AsDuration()
+     }
+
+     scanCtx, cancel := context.WithTimeout(ctx, timeout)
+     defer cancel()
+
+     h.logger.Info("starting discovery", "timeout", timeout)
+
+     // Get scanner
+     scanner := h.manager.GetScanner()
+     if scanner == nil {
+         return fmt.Errorf("scanner not available")
+     }
+
+     // Perform scan
+     services, err := scanner.Scan(scanCtx)
+     if err != nil && !errors.Is(err, mdns.ErrScanTimeout) {
+         return fmt.Errorf("scan failed: %w", err)
+     }
+
+     h.logger.Info("scan completed", "devices_found", len(services))
+
+     // Convert and stream results
+     for _, entry := range services {
+         device := h.toEdgeDevice(entry)
+
+         resp := &v1.DiscoverResponse{
+             Devices: []*v1.EdgeDevice{device},
+         }
+
+         if err := stream.Send(resp); err != nil {
+             return fmt.Errorf("send failed: %w", err)
+         }
+
+         h.logger.Debug("sent device", "hostname", device.Hostname)
+     }
+
+     return nil
+ }
+
+ // toEdgeDevice converts ServiceEntry to EdgeDevice.
+ func (h *DiscoveryHandler) toEdgeDevice(entry *mdns.ServiceEntry) *v1.EdgeDevice {
+     device := &v1.EdgeDevice{
+         Hostname: entry.Hostname,
+     }
+
+     txt := entry.TXTRecords
+
+     device.DeviceId = txt["id"]
+     device.ModelName = txt["model"]
+     device.BiosVersion = txt["bios"]
+     device.PlatformVersion = txt["platform"]
+
+     if port, err := strconv.Atoi(txt["port"]); err == nil {
+         device.ApiPort = int32(port)
+     }
+
+     if tls, err := strconv.ParseBool(txt["tls"]); err == nil {
+         device.TlsSupport = tls
+     }
+
+     if cores, err := strconv.Atoi(txt["cores"]); err == nil {
+         device.CpuCores = int32(cores)
+     }
+
+     if mem, err := strconv.ParseInt(txt["mem"], 10, 64); err == nil {
+         device.Memory = mem
+     }
+
+     // Add IP addresses
+     for _, ip := range entry.IPv4Addrs {
+         device.Interfaces = append(device.Interfaces, &v1.NetworkInterface{
+             Ipv4: ip,
+             Role: v1.NetworkInterfaceRole_NETWORK_INTERFACE_ROLE_PRIMARY,
+         })
+     }
+
+     return device
+ }
+
+ ---
+ Commit 6: Wire DiscoveryService in main
+
+ feat(cmd): configure Manager with mDNS and register DiscoveryService
+
+ - Create Manager with MDNS config
+ - Register DiscoveryHandler to gRPC server
+ - Handle graceful shutdown on SIGINT/SIGTERM
+ - Use constants from mdns package
+
+ 修改檔案：
+ - 修改：cmd/discover/main.go
+
+ 內容：
+ package main
+
+ import (
+     "context"
+     "log/slog"
+     "os"
+     "os/signal"
+     "syscall"
+     "time"
+
+     v1 "github.com/ardge-labs/arx-platform-discover/api/arx/node/v1"
+     "github.com/ardge-labs/arx-platform-discover/internal/server"
+ )
+
+ func main() {
+     logger := slog.Default()
+
+     // Create manager
+     mgr, err := server.NewManager(&server.ManagerConfig{
+         GRPC: &server.Config{
+             SocketPath: "/var/run/arx/node-discovery.sock",
+             Logger:     logger,
+         },
+         MDNS: &server.MDNSConfig{
+             ServiceName: "_arx-discover._tcp",
+             ServicePort: 50051,
+         },
+         Logger: logger,
+     })
+     if err != nil {
+         logger.Error("create manager failed", "err", err)
+         os.Exit(1)
+     }
+
+     // Register gRPC handler
+     handler := server.NewDiscoveryHandler(mgr, logger)
+     v1.RegisterDiscoveryServiceServer(mgr.GRPCServer().GetServer(), handler)
+
+     logger.Info("services registered")
+
+     // Start manager
+     ctx, cancel := context.WithCancel(context.Background())
+     defer cancel()
+
+     go func() {
+         if err := mgr.Start(ctx); err != nil {
+             logger.Error("manager failed", "err", err)
+             os.Exit(1)
+         }
+     }()
+
+     // Wait for signal
+     sigCh := make(chan os.Signal, 1)
+     signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+     <-sigCh
+
+     logger.Info("received shutdown signal")
+     cancel()
+
+     // Wait for graceful shutdown
+     time.Sleep(time.Second)
+     logger.Info("shutdown complete")
+ }
+
+ ---
+ Commit 7: Add unit tests for device TXT builder
+
+ test(device): add unit tests for BuildTXT function
+
+ - Test normal conversion
+ - Test nil input handling
+ - Verify all fields are correctly encoded
+
+ 修改檔案：
+ - 新增：internal/device/txt_test.go
+
+ 內容：
+ package device
+
+ import (
+     "testing"
+ )
+
+ func TestBuildTXT(t *testing.T) {
+     tests := []struct {
+         name    string
+         info    *DeviceInfo
+         wantErr bool
+     }{
+         {
+             name: "valid device info",
+             info: &DeviceInfo{
+                 DeviceID:        "test-123",
+                 ModelName:       "Test Model",
+                 BIOSVersion:     "1.0",
+                 PlatformVersion: "Ubuntu 22.04",
+                 APIPort:         8080,
+                 TLSSupport:      true,
+                 CPUCores:        8,
+                 Memory:          16000000000,
+             },
+             wantErr: false,
+         },
+         {
+             name:    "nil device info",
+             info:    nil,
+             wantErr: true,
+         },
+     }
+
+     for _, tt := range tests {
+         t.Run(tt.name, func(t *testing.T) {
+             txt, err := BuildTXT(tt.info)
+
+             if (err != nil) != tt.wantErr {
+                 t.Errorf("BuildTXT() error = %v, wantErr %v", err, tt.wantErr)
+                 return
+             }
+
+             if !tt.wantErr {
+                 if txt["id"] != tt.info.DeviceID {
+                     t.Errorf("id = %v, want %v", txt["id"], tt.info.DeviceID)
+                 }
+                 if txt["model"] != tt.info.ModelName {
+                     t.Errorf("model = %v, want %v", txt["model"], tt.info.ModelName)
+                 }
+                 // ... 其他欄位驗證
+             }
+         })
+     }
+ }
+
+ ---
+ Commit 8: Add unit tests for DiscoveryHandler
+
+ test(server): add unit tests for DiscoveryHandler
+
+ - Test toEdgeDevice conversion
+ - Verify TXT record parsing
+ - Test IPv4 address conversion
+
+ 修改檔案：
+ - 新增：internal/server/discovery_test.go
+
+ 內容：
+ package server
+
+ import (
+     "testing"
+
+     v1 "github.com/ardge-labs/arx-platform-discover/api/arx/node/v1"
+     "github.com/ardge-labs/arx-platform-discover/internal/mdns"
+ )
+
+ func TestDiscoveryHandler_toEdgeDevice(t *testing.T) {
+     handler := &DiscoveryHandler{}
+
+     entry := &mdns.ServiceEntry{
+         Hostname: "test-device",
+         Port:     50051,
+         TXTRecords: map[string]string{
+             "id":       "dev-123",
+             "model":    "Test Model",
+             "bios":     "1.0",
+             "platform": "Linux",
+             "port":     "8080",
+             "tls":      "true",
+             "cores":    "8",
+             "mem":      "16000000000",
+         },
+         IPv4Addrs: []string{"192.168.1.100"},
+     }
+
+     device := handler.toEdgeDevice(entry)
+
+     if device.Hostname != "test-device" {
+         t.Errorf("Hostname = %v, want test-device", device.Hostname)
+     }
+
+     if device.DeviceId != "dev-123" {
+         t.Errorf("DeviceId = %v, want dev-123", device.DeviceId)
+     }
+
+     if device.ApiPort != 8080 {
+         t.Errorf("ApiPort = %v, want 8080", device.ApiPort)
+     }
+
+     if !device.TlsSupport {
+         t.Error("TlsSupport should be true")
+     }
+
+     if len(device.Interfaces) != 1 {
+         t.Errorf("Interfaces count = %v, want 1", len(device.Interfaces))
+     }
+ }
+
+ ---
+ 檔案清單總覽
+
+ 修改檔案（2 個）
+
+ 1. internal/mdns/validation.go - 新增 DefaultTXTUpdateInterval 常數
+ 2. internal/server/manager.go - 整合 mDNS Advertiser
+ 3. cmd/discover/main.go - 組裝服務
+
+ 新增檔案（4 個）
+
+ 1. internal/device/txt.go - TXT 轉換函數
+ 2. internal/device/txt_test.go - 單元測試
+ 3. internal/server/discovery.go - gRPC handler
+ 4. internal/server/discovery_test.go - handler 測試
+
+ ---
+ Commit 順序
+
+ 1. fix(mdns): domain fix             → 修復基礎問題
+ 2. feat(mdns): add constant          → 新增常數
+ 3. feat(device): BuildTXT            → 基礎工具
+ 4. feat(server): Manager integration → 廣播功能
+ 5. feat(server): DiscoveryHandler    → 掃描功能
+ 6. feat(cmd): wiring                 → 組裝啟動
+ 7. test(device): txt tests           → 測試
+ 8. test(server): handler tests       → 測試

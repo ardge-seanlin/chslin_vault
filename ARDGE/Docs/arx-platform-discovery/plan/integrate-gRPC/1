@@ -1,0 +1,242 @@
+PR#1: mDNS Service Foundation & Domain Fix
+
+ 目標：建立 Service 基礎架構並修復 domain 問題
+ 檔案範圍：internal/mdns/, internal/device/
+
+ Commit 1.1: Fix domain format in mdns package
+
+ fix(mdns): use "local." as default domain instead of "local"
+
+ - Update validation.go DefaultDomain constant
+ - Fix mdns.go line 53 to use DefaultDomain
+ - Aligns with RFC 6762 and zeroconf library expectations
+ 修改檔案：
+ - internal/mdns/validation.go (已經是 "local."，確認無誤)
+ - internal/mdns/mdns.go (line 53)
+
+ Commit 1.2: Add TXTRecords and Interfaces to mdns.Config
+
+ feat(mdns): extend Config to support TXT records and interfaces
+
+ - Add TXTRecords map[string]string field
+ - Add Interfaces []string field for selective advertising
+ - Update validation to skip empty fields
+ 修改檔案：
+ - internal/mdns/mdns.go (Config struct)
+
+ Commit 1.3: Implement mdns.Service to manage Advertiser and Scanner
+
+ feat(mdns): add Service to coordinate Advertiser and Scanner
+
+ - Create Service struct with both components
+ - Implement Start() to run Advertiser
+ - Implement Stop() with sync.Once protection
+ - Provide GetScanner() for external access
+ - Support UpdateTXTRecords() for dynamic updates
+ 新增檔案：
+ - internal/mdns/service.go
+
+ Commit 1.4: Add device info to TXT records converter
+
+ feat(device): add converter for DeviceInfo to TXT records
+
+ - Implement DeviceInfoToTXT() to encode device metadata
+ - Support all DeviceInfo fields (device_id, model, BIOS, etc.)
+ - Add proper error handling for nil inputs
+ 新增檔案：
+ - internal/device/converter.go (只實現 DeviceInfoToTXT 部分)
+
+ Commit 1.5: Add unit tests for Service and converter
+
+ test(mdns,device): add tests for Service and converter
+
+ - Test Service lifecycle (Start/Stop)
+ - Test GetScanner() returns valid scanner
+ - Test DeviceInfoToTXT conversion accuracy
+ 新增檔案：
+ - internal/mdns/service_test.go
+ - internal/device/converter_test.go
+
+ ---
+ PR#2: Integrate mDNS Service with Manager
+
+ 目標：確保 Manager 正確啟動和監控 mDNS Advertiser
+ 檔案範圍：internal/mdns/mdns.go, internal/server/, cmd/discover/
+
+ Commit 2.1: Refactor mdns.Server to use Service
+
+ refactor(mdns): migrate mdns.Server to use Service internally
+
+ - Replace direct Advertiser usage with Service
+ - Update New() to create Service with AdvertiserConfig and ScannerConfig
+ - Implement Start() and Stop() to delegate to Service
+ - Add GetService() method for external access
+ 修改檔案：
+ - internal/mdns/mdns.go
+
+ Commit 2.2: Fix Manager to ensure mDNS startup success
+
+ fix(server): ensure Manager detects mDNS startup failures
+
+ Current issues:
+ - mDNS goroutine errors not captured if they fail immediately
+ - Manager.Start() returns before mDNS is fully initialized
+
+ Changes:
+ - Add startup synchronization with channel
+ - Return error if mDNS fails to start within timeout
+ - Improve error logging for mDNS lifecycle
+ 修改檔案：
+ - internal/server/manager.go
+
+ 具體改動：
+ func (m *Manager) Start(ctx context.Context) error {
+     // ...
+     errChan := make(chan error, 2)  // 增加 buffer
+     startedChan := make(chan struct{})  // 新增
+
+     // Start mDNS server if configured
+     if m.mdnsSrv != nil {
+         go func() {
+             if err := m.mdnsSrv.Start(ctx); err != nil {
+                 select {
+                 case errChan <- fmt.Errorf("mDNS server error: %w", err):
+                 case <-ctx.Done():
+                 }
+             }
+         }()
+
+         // Wait for mDNS to start or fail (with timeout)
+         select {
+         case err := <-errChan:
+             return err
+         case <-time.After(2 * time.Second):
+             // mDNS started successfully
+             m.logger.Info("mDNS server started")
+         case <-ctx.Done():
+             return ctx.Err()
+         }
+     }
+
+     // Wait for context cancellation or error
+     select {
+     case <-ctx.Done():
+         m.logger.Info("context cancelled, initiating graceful shutdown")
+         m.Stop()
+         return ctx.Err()
+     case err := <-errChan:
+         m.Stop()
+         return err
+     }
+ }
+
+ Commit 2.3: Update main.go to collect and advertise device info
+
+ feat(cmd): configure mDNS with device metadata TXT records
+
+ - Collect device info using device.Collector on startup
+ - Convert to TXT records via converter.DeviceInfoToTXT
+ - Pass TXT records to Manager via mdns.Config
+ - Add proper error handling for collection failures
+ 修改檔案：
+ - cmd/discover/main.go
+
+ Commit 2.4: Add integration test for Advertiser flow
+
+ test(server): add integration test for mDNS advertising
+
+ - Test Manager starts with mDNS enabled
+ - Verify device info is advertised via mDNS
+ - Test graceful shutdown stops advertising
+ 新增檔案：
+ - internal/server/manager_integration_test.go (with build tag)
+
+ ---
+ PR#3: Implement gRPC DiscoveryService Handler
+
+ 目標：實現 Scanner 功能並暴露為 gRPC service
+ 檔案範圍：internal/server/discovery.go, internal/device/converter.go
+
+ Commit 3.1: Add ServiceEntry to EdgeDevice converter
+
+ feat(device): add converter from mDNS ServiceEntry to EdgeDevice
+
+ - Implement ServiceEntryToEdgeDevice() for protobuf conversion
+ - Parse TXT records to EdgeDevice fields
+ - Convert IPv4/IPv6 addresses to NetworkInterface
+ - Handle missing or malformed TXT gracefully
+ 修改檔案：
+ - internal/device/converter.go (新增 ServiceEntryToEdgeDevice)
+
+ Commit 3.2: Implement DiscoveryService gRPC handler
+
+ feat(server): implement DiscoveryService handler with streaming
+
+ - Create DiscoveryHandler implementing DiscoveryServiceServer
+ - Implement Discover() with server-streaming RPC
+ - Use Scanner.StreamScan() for continuous discovery
+ - Convert ServiceEntry to EdgeDevice and stream to client
+ - Handle timeout and cancellation properly
+ 新增檔案：
+ - internal/server/discovery.go
+
+ Commit 3.3: Register DiscoveryHandler in Manager
+
+ feat(server): register DiscoveryService in Manager
+
+ - Create DiscoveryHandler when mDNS is configured
+ - Register to gRPC server in NewManager()
+ - Pass mdns.Service to handler for Scanner access
+ - Add logging for service registration
+ 修改檔案：
+ - internal/server/manager.go
+
+ 需要加入：
+ func NewManager(config *ManagerConfig) (*Manager, error) {
+     // ... existing code ...
+
+     // Create mDNS server if configured
+     if config.MDNS != nil {
+         mdnsSrv, err := mdns.New(config.MDNS)
+         if err != nil {
+             return nil, fmt.Errorf("failed to create mDNS server: %w", err)
+         }
+         m.mdnsSrv = mdnsSrv
+
+         // ⭐ Register DiscoveryService handler
+         discoveryHandler := NewDiscoveryHandler(
+             mdnsSrv.GetService(),
+             logger,
+         )
+         v1.RegisterDiscoveryServiceServer(
+             grpcSrv.GetServer(),
+             discoveryHandler,
+         )
+
+         logger.Info("mDNS server configured and DiscoveryService registered")
+     }
+
+     return m, nil
+ }
+
+ Commit 3.4: Add unit tests for DiscoveryHandler
+
+ test(server): add tests for DiscoveryService handler
+
+ - Test Discover RPC with mock scanner
+ - Verify timeout handling
+ - Test cancellation behavior
+ - Verify EdgeDevice conversion
+ 新增檔案：
+ - internal/server/discovery_test.go
+
+ Commit 3.5: Add end-to-end integration test
+
+ test(server): add e2e test for device discovery via gRPC
+
+ - Start Manager with mDNS enabled
+ - Call Discover RPC via gRPC client
+ - Verify discovered devices are returned
+ - Test with real zeroconf (local network)
+ 新增檔案：
+ - internal/server/discovery_integration_test.go

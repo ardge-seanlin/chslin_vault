@@ -9,15 +9,14 @@
 5. [角色分工](#五角色分工)
 6. [關鍵功能](#六關鍵功能)
 7. [SSH 帳號設計與生命週期](#七ssh-帳號設計與生命週期)
-8. [Session Info 回傳機制](#八session-info-回傳機制)
-9. [密碼傳遞方案](#九密碼傳遞方案)
-10. [抽象層設計（降低移植成本）](#十抽象層設計降低移植成本)
-11. [待釐清問題](#十一待釐清問題)
-12. [潛在風險與問題](#十二潛在風險與問題)
-13. [成本估算](#十三成本估算)
-14. [時程估算](#十四時程估算)
-15. [決策建議](#十五決策建議)
-16. [附錄](#十六附錄)
+8. [密碼傳遞方案](#八密碼傳遞方案)
+9. [抽象層設計（降低移植成本）](#九抽象層設計降低移植成本)
+10. [待釐清問題](#十待釐清問題)
+11. [潛在風險與問題](#十一潛在風險與問題)
+12. [成本估算](#十二成本估算)
+13. [時程估算](#十三時程估算)
+14. [決策建議](#十四決策建議)
+15. [附錄](#十五附錄)
 
 ---
 
@@ -62,7 +61,6 @@ Support Engineer 用瀏覽器連入，操作 Web Desktop 和 SSH
 |------|----------|-----------|
 | **QNAP** | SSH Reverse Tunnel | NAS 主動 SSH 連到 QNAP 伺服器，技術人員反向連入 |
 | **Synology** | SSH + 臨時帳號 | 給密碼和識別碼，Synology 建立連線，14天後失效 |
-| **NVIDIA Spark** | mDNS + SSH | 區域網路發現和 SSH，非跨網路支援 |
 | **TeamViewer** | NAT 穿透 + P2P/Relay | 中央伺服器配對 ID，嘗試 P2P，失敗則中繼 |
 
 ### 方案選擇
@@ -94,44 +92,43 @@ Support Engineer 用瀏覽器連入，操作 Web Desktop 和 SSH
 客戶 LAN                                        你們的基礎設施
 ┌────────────────────────────────┐              ┌────────────────────────┐
 │                                │              │                        │
-│  客戶設備                      │              │  Session Manager       │
+│  客戶設備                       │              │  （可選）後台系統       │
 │  ┌──────────────────────────┐  │              │  ┌──────────────────┐  │
-│  │ Web Desktop (:8080)      │  │              │  │ API Server       │  │
-│  │ SSH (:22)                │  │   HTTPS      │  │ • /sessions/*    │  │
-│  │                          │  │ ◄──────────► │  │                  │  │
-│  │ Helper App               │  │              │  └──────────────────┘  │
-│  │ ├── SessionClient ───────┼──┼──────────────┼──►                     │
-│  │ ├── AccountManager       │  │              │  ┌──────────────────┐  │
-│  │ ├── TunnelManager        │  │              │  │ Database         │  │
-│  │ └── UI (in Web Desktop)  │  │              │  │ • Sessions       │  │
-│  │                          │  │              │  │ • Passwords(加密)│  │
-│  └──────────────────────────┘  │              │  │ • Devices        │  │
-│                                │              │  └──────────────────┘  │
-│  ┌──────────────────────────┐  │              │                        │
-│  │ cloudflared (Docker)     │  │              │  ┌──────────────────┐  │
-│  │                          │  │              │  │ Cloudflare API   │  │
-│  └────────────┬─────────────┘  │              │  │ Client           │  │
-│               │                │              │  └─────────┬────────┘  │
-└───────────────┼────────────────┘              └────────────┼───────────┘
-                │                                            │
-                │ Tunnel                                     │ API
-                ▼                                            ▼
+│  │ Web Desktop (:8080)      │  │              │  │ Database         │  │
+│  │ SSH (:22)                │  │   HTTPS      │  │ • Audit Log      │  │
+│  │                          │  │ ◄────────────┼─►│ • 設定管理       │  │
+│  │ Helper App               │  │              │  │                  │  │
+│  │ ├── TunnelManager ───────┼──┼──────────────┼──►                     │
+│  │ ├── AccountManager       │  │              │  └──────────────────┘  │
+│  │ └── UI (in Web Desktop)  │  │              │                        │
+│  │                          │  │              │                        │
+│  └──────────────────────────┘  │              └────────────────────────┘
+│                                │
+│  ┌──────────────────────────┐  │
+│  │ cloudflared (Docker)     │  │
+│  │                          │  │
+│  └────────────┬─────────────┘  │
+│               │                │
+└───────────────┼────────────────┘
+                │
+                │ Tunnel
+                ▼
 ┌─────────────────────────────────────────────────────────────────────────┐
-│                         Cloudflare                                       │
+│                         Cloudflare                                      │
 │  ┌──────────────────┐  ┌──────────────────┐  ┌──────────────────┐       │
 │  │ Tunnel Service   │  │ Access (Auth)    │  │ API              │       │
-│  │ • 接收 tunnel    │  │ • IdP 整合       │  │ • Tunnel CRUD    │       │
-│  │ • 路由流量       │  │ • Policy 檢查    │  │ • DNS 管理       │       │
-│  │ • Browser SSH    │  │ • Session 管理   │  │                  │       │
+│  │ • 接收 tunnel     │  │ • IdP 整合       │  │ • Tunnel CRUD    │       │
+│  │ • 路由流量        │  │ • Policy 檢查     │  │ • DNS 管理       │        │
+│  │ • Browser SSH    │  │ • Session 管理    │  │                  │       │
 │  └──────────────────┘  └──────────────────┘  └──────────────────┘       │
 └─────────────────────────────────────────────────────────────────────────┘
                                     ▲
                                     │ HTTPS
 ┌─────────────────────────────────────────────────────────────────────────┐
-│                      Support Engineer                                    │
-│  • 瀏覽器開 Web Desktop                                                 │
-│  • 瀏覽器開 SSH Terminal                                                │
-│  • 不需安裝任何軟體                                                     │
+│                      Support Engineer                                   │
+│  • 瀏覽器開 Web Desktop                                                   │
+│  • 瀏覽器開 SSH Terminal                                                  │
+│  • 不需安裝任何軟體                                                        │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -143,7 +140,6 @@ Support Engineer 用瀏覽器連入，操作 Web Desktop 和 SSH
 | **SSH daemon** | 客戶設備 | 系統內建 SSH 服務（既有） |
 | **Helper App** | 客戶設備 | 管理 Tunnel 的啟停、帳號管理 |
 | **cloudflared** | 客戶設備 (Docker) | Cloudflare 的 tunnel client |
-| **Session Manager** | 你們的伺服器 | 管理 session、儲存密碼、提供 API |
 | **Cloudflare** | 雲端 | Tunnel 路由、身份驗證、Browser SSH |
 
 ---
@@ -271,15 +267,15 @@ Support Engineer 用瀏覽器連入，操作 Web Desktop 和 SSH
 
 ┌────────────────────────────────────────────────────────┐
 │                                                        │
-│   客戶         → 可以停止支援（刪除 Tunnel）           │
+│   客戶         → 可以停止支援（刪除 Tunnel）               │
 │                                                        │
-│   Helper App   → 可以刪除自己建立的 Tunnel             │
+│   Helper App   → 可以刪除自己建立的 Tunnel                │
 │                                                        │
-│   Cloudflare   → 可以做任何事：                        │
+│   Cloudflare   → 可以做任何事：                          │
 │   Manager        • 刪除 Tunnel                         │
-│                  • 撤銷 Session                        │
-│                  • 禁止特定人存取                      │
-│                  • 關閉整個應用                        │
+│                  • 撤銷連線                            │
+│                  • 禁止特定人存取                        │
+│                  • 關閉整個應用                          │
 │                                                        │
 └────────────────────────────────────────────────────────┘
 ```
@@ -295,7 +291,6 @@ Support Engineer 用瀏覽器連入，操作 Web Desktop 和 SSH
 | **IdP 整合** | 員工用公司 Google/GitHub 帳號登入 | 管理員、工程師 |
 | **Browser SSH** | 瀏覽器內直接操作 SSH，不需裝軟體 | 工程師 |
 | **Audit Log** | 記錄誰、何時、從哪裡存取 | 管理員、客戶 |
-| **Session 管理** | 可隨時撤銷存取權限 | 管理員 |
 | **On-demand Tunnel** | 客戶需要時才建立，結束後刪除 | 安全性 |
 
 ### 1. IdP 整合（Google/GitHub 等）
@@ -337,7 +332,11 @@ Support Engineer 用瀏覽器連入，操作 Web Desktop 和 SSH
 4. 輸入 SSH 使用者名稱和密碼
 5. 開始操作
 
-### 3. Audit Log 和 Session 管理
+### 3. Audit Log 和連線管理
+
+**Audit Log 功能：**
+
+Cloudflare Access audit logs 記錄身份驗證事件和對受保護 URI 路徑和基礎設施目標的請求。可以透過 API 查詢帳號的 audit logs，並可按行為類型、執行者電子郵件、IP 地址和時間框架進行篩選。
 
 **功能位置：**
 
@@ -345,16 +344,15 @@ Support Engineer 用瀏覽器連入，操作 Web Desktop 和 SSH
 |------|------|------|
 | IdP 整合 | Settings → Authentication | 員工用公司帳號登入 |
 | Browser SSH | Access → Applications → Browser rendering | 瀏覽器內操作 SSH |
-| Access Log | Logs → Access Requests | 查看誰存取了什麼 |
-| Session 管理 | Access → Applications → Sessions | 查看/撤銷活躍連線 |
+| Audit Log | Manage Account → Audit Logs | 查看所有帳戶活動和存取記錄 |
+| Access Log | Logs → Access Requests | 查看誰存取了什麼應用 |
 | User 管理 | My Team → Users | 管理使用者權限 |
-| Logpush | Logs → Logpush | 匯出 log 到外部系統 |
+| Logpush | Logs → Logpush | 匯出 log 到外部系統（SIEM 等） |
 
-**Session 操作：**
+**連線操作：**
 
 | 操作 | 位置 | 效果 |
 |------|------|------|
-| 撤銷單一 Session | Access → Applications → Sessions → Revoke | 該使用者的當前連線被踢出 |
 | 撤銷某使用者所有 Session | My Team → Users → Revoke all sessions | 該使用者在所有應用的連線都被踢出 |
 | 撤銷某應用所有 Session | Access → Applications → Revoke existing tokens | 所有連到該應用的人都被踢出 |
 | 刪除 Tunnel | Networks → Tunnels → Delete | 整個通道關閉，所有連線中斷 |
@@ -397,12 +395,11 @@ Support Engineer 用瀏覽器連入，操作 Web Desktop 和 SSH
       ▼
 ┌─────────────────────────────────────────┐
 │ Helper App:                             │
-│ 1. 呼叫 Session Manager 建立 session   │
-│ 2. 解鎖帳號                            │
-│ 3. 產生隨機密碼（16+ 字元）            │
-│ 4. 設定密碼                            │
-│ 5. 啟動 Tunnel                         │
-│ 6. 回傳 session info + 密碼            │
+│ 1. 解鎖帳號                            │
+│ 2. 產生隨機密碼（16+ 字元）            │
+│ 3. 設定密碼                            │
+│ 4. 啟動 Tunnel                         │
+│ 5. 在客戶畫面顯示連線資訊              │
 │                                         │
 │ 狀態：帳號可登入，密碼已設定           │
 └─────────────────────────────────────────┘
@@ -421,7 +418,6 @@ Support Engineer 用瀏覽器連入，操作 Web Desktop 和 SSH
 │ 3. 設定隨機密碼（讓舊密碼失效）        │
 │ 4. 清理 shell history                  │
 │ 5. 停止 Tunnel                         │
-│ 6. 通知 Session Manager                │
 │                                         │
 │ 狀態：帳號再次鎖定，密碼已失效         │
 └─────────────────────────────────────────┘
@@ -447,160 +443,24 @@ passwd -l kaiden_support
 |------|----------|
 | 帳號平時鎖定 | `passwd -l` |
 | 密碼每次不同 | 隨機產生 |
-| 密碼加密儲存 | AES-256 |
-| 密碼查看記錄 | 記錄誰、何時查看 |
+| 密碼客戶畫面顯示 | 在 Helper 頁面顯示 |
 | Session 結束清理 | 踢掉連線 + 鎖定帳號 + 清歷史 |
 | 雙層認證 | Cloudflare Access + SSH 密碼 |
-| 操作追蹤 | Cloudflare Log + 可選 command log |
+| 操作追蹤 | Cloudflare Audit Log |
 
 ---
 
-## 八、Session Info 回傳機制
-
-### 問題核心
-
-客戶設備在 LAN 內，沒有公網 IP，但需要把 Session Info（包含 SSH 密碼）傳給 Session Manager。
-
-### 方案：Helper 主動呼叫 API
-
-```
-客戶設備（在客戶 LAN 內）
-      │
-      │ HTTPS（主動連出去）
-      ▼
-Session Manager（你們的伺服器，有公網）
-```
-
-### 完整流程
-
-```
-[客戶按「啟動支援」]
-         │
-         ▼
-Step 1: Helper App → Session Manager
-        POST /api/sessions/request
-        「我要開始支援 session」
-         │
-         ▼
-Step 2: Session Manager
-        1. 建立 session 記錄
-        2. 呼叫 Cloudflare API 建立 Tunnel
-        3. 取得 Tunnel Token
-        4. 回傳給 Helper App
-         │
-         ▼
-Step 3: Helper App（在客戶設備上）
-        1. 解鎖帳號
-        2. 產生隨機密碼
-        3. 設定密碼
-        4. 啟動 cloudflared
-         │
-         ▼
-Step 4: Helper App → Session Manager
-        POST /api/sessions/{session_id}/ready
-        「我準備好了，這是 SSH 密碼」
-         │
-         ▼
-Step 5: Session Manager
-        1. 加密儲存密碼
-        2. 更新 session 狀態為 ready
-        3. Support Engineer 可以看到這個 session 了
-```
-
-### API 設計
-
-```yaml
-# 1. 請求建立 Session
-POST /api/sessions/request
-Request:
-  device_id: string
-  device_info:
-    hostname: string
-    os: string
-    ip_local: string
-Response:
-  session_id: string
-  tunnel_token: string
-  endpoints:
-    web_desktop: string
-    ssh: string
-  expires_at: datetime
-
-# 2. 回報 Session 已就緒
-POST /api/sessions/{session_id}/ready
-Request:
-  status: "ready" | "error"
-  ssh_username: string
-  ssh_password: string
-  tunnel_status: string
-  error_message?: string
-Response:
-  success: boolean
-
-# 3. 回報狀態更新（心跳）
-POST /api/sessions/{session_id}/heartbeat
-Request:
-  tunnel_status: "connected" | "disconnected"
-  timestamp: datetime
-Response:
-  success: boolean
-  should_terminate: boolean
-
-# 4. 結束 Session
-POST /api/sessions/{session_id}/end
-Request:
-  reason: "user_request" | "timeout" | "error"
-Response:
-  success: boolean
-```
-
-### 安全考量
-
-| 考量 | 方案 |
-|------|------|
-| 設備認證 | Device API Key（設備出廠時產生） |
-| 密碼傳輸加密 | HTTPS + 可選應用層加密 |
-| 防止重放攻擊 | timestamp + nonce + signature |
-
----
-
-## 九、密碼傳遞方案
+## 八、密碼傳遞方案
 
 ### 方案比較
 
 | 方案 | 需要自建 | 安全性 | 複雜度 | 適合階段 |
 |------|----------|--------|--------|----------|
-| **B. 客戶畫面顯示** | 無 | 低 | 最簡單 | POC |
-| **A. Session Manager** | 簡單後台 | 高 | 中 | MVP/正式 |
-| **C. Workers 中繼** | Worker 腳本 | 中高 | 中 | 不想維護後台時 |
-| **D. Access for Infrastructure** | sshd 設定 | 最高 | 高 | 企業級 |
+| **A. 客戶畫面顯示** | 無 | 中 | 最簡單 | **推薦** |
+| B. Workers 中繼 | Worker 腳本 | 中高 | 中 | 不想讓客戶看到密碼時 |
+| C. Access for Infrastructure | sshd 設定 | 最高 | 高 | 企業級 |
 
-### 方案 A：透過 Session Manager（推薦）
-
-```
-客戶設備                    Session Manager               Support Engineer
-    │                            │                              │
-    │ 1. 產生密碼                │                              │
-    │                            │                              │
-    │ 2. POST /sessions/{id}/ready                              │
-    │    { ssh_password: "xxx" } │                              │
-    │ ──────────────────────────>│                              │
-    │                            │ 3. 加密儲存密碼              │
-    │                            │                              │
-    │                            │ 4. 工程師登入 Support Portal │
-    │                            │<─────────────────────────────│
-    │                            │                              │
-    │                            │ 5. 點擊「顯示密碼」          │
-    │                            │<─────────────────────────────│
-    │                            │                              │
-    │                            │ 6. 回傳密碼                  │
-    │                            │─────────────────────────────>│
-    │                            │                              │
-    │                            │              7. 用密碼 SSH 登入
-    │<─────────────────────────────────────────────────────────────
-```
-
-### 方案 B：顯示在客戶畫面（POC 用）
+### 方案 A：顯示在客戶畫面（推薦）
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -617,43 +477,58 @@ Response:
 │  │ SSH 登入資訊:                                           │   │
 │  │   帳號: kaiden_support                                  │   │
 │  │   密碼: ●●●●●●●●●●●●  [顯示] [複製]                     │   │
+│  │   URL: https://ssh.support.yourcompany.com/ABC-123-XYZ │   │
 │  └─────────────────────────────────────────────────────────┘   │
 │                                                                 │
 │  ⚠️ 請勿將此資訊分享給其他人                                    │
+│  ⏱️ 此 session 將於 4 小時後自動過期                            │
 │                                                                 │
 │                        [停止支援]                               │
 │                                                                 │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-### 建議演進路線
+**流程：**
 
 ```
-Phase 1: POC（1-2 週）
-├── 用方案 B（密碼顯示在客戶畫面）
-├── 快速驗證整體流程可行
-└── 不需要任何後台
-
+[客戶按「啟動支援」]
          │
          ▼
-
-Phase 2: MVP（2-4 週）
-├── 用方案 A（Session Manager）
-├── 建一個簡單的後台
-├── 密碼安全傳遞和儲存
-└── 有 audit log
-
+Helper App（在客戶設備上）
+    1. 呼叫 Cloudflare API 建立 Tunnel
+    2. 取得 Tunnel Token
+    3. 解鎖帳號
+    4. 產生隨機密碼
+    5. 設定密碼
+    6. 啟動 cloudflared
          │
          ▼
-
-Phase 3: 優化（視需求）
-├── 方案 C（Workers）如果不想維護後台
-└── 方案 D（Access for Infrastructure）如果要最高安全性
+[客戶畫面顯示連線資訊]
+    • Session ID
+    • SSH 帳號
+    • SSH 密碼
+    • SSH URL
+    • 過期時間
+         │
+         ▼
+[客戶告知工程師]
+    或透過其他通道（電話、工單系統）
+         │
+         ▼
+[Support Engineer 用 SSH URL 或帳密連線]
 ```
+
+### 安全考量
+
+| 考量 | 方案 |
+|------|------|
+| 密碼傳輸加密 | HTTPS（Cloudflare 負責） |
+| 防止重放攻擊 | Timeout 機制 + Session ID 驗證 |
+| 客戶隱私 | 密碼只在客戶設備和 SSH 連線間傳輸 |
 
 ---
 
-## 十、抽象層設計（降低移植成本）
+## 九、抽象層設計（降低移植成本）
 
 ### 設計原則
 
@@ -661,7 +536,7 @@ Phase 3: 優化（視需求）
 ┌─────────────────────────────────────────────────────────────────┐
 │                    你的應用層                                    │
 ├─────────────────────────────────────────────────────────────────┤
-│   Helper App          Session Manager          Support Portal   │
+│   Helper App          Support Portal          監控管理            │
 └───────────────────────────┬─────────────────────────────────────┘
                             │ 統一介面
                             ▼
@@ -670,7 +545,7 @@ Phase 3: 優化（視需求）
 │                    (抽象層)                                      │
 ├─────────────────────────────────────────────────────────────────┤
 │   CreateTunnel()    DeleteTunnel()    GetTunnelStatus()         │
-│   GetConnectURLs()  RevokeSession()   ListActiveSessions()      │
+│   ListActiveSessions()  RevokeSession()                         │
 └───────────────────────────┬─────────────────────────────────────┘
                             │
               ┌─────────────┴─────────────┐
@@ -691,8 +566,8 @@ type TunnelProvider interface {
     GetTunnel(tunnelID string) (*TunnelInfo, error)
     ListTunnels() ([]TunnelInfo, error)
     
-    // Session 管理
-    ListSessions(tunnelID string) ([]Session, error)
+    // Session 查詢
+    ListActiveSessions(tunnelID string) ([]Session, error)
     RevokeSession(sessionID string) error
     RevokeAllSessions(tunnelID string) error
     
@@ -714,8 +589,8 @@ case "selfhosted":
     provider = tunnel.NewSelfHostedProvider(config)
 }
 
-// Session Manager 不在乎底層是什麼
-sessionManager := manager.NewSessionManager(provider)
+// Helper App 不在乎底層是什麼
+tunnelManager := manager.NewTunnelManager(provider)
 ```
 
 ### 移植成本評估
@@ -723,21 +598,19 @@ sessionManager := manager.NewSessionManager(provider)
 | 項目 | 成本 |
 |------|------|
 | **不用改** | |
-| Session Manager | 0 |
-| 後台 API | 0 |
 | Helper App 主邏輯 | 0 |
 | 前端 UI | 0 |
+| 帳號管理邏輯 | 0 |
 | **要改** | |
 | 新增 SelfHostedProvider | 中（幾天） |
 | 自建 Relay Server | 高（1-2 週） |
 | 自建 Web Proxy | 高（1-2 週） |
 | 自建 Auth Server | 中（1 週） |
 | 自建 Browser SSH | 高（可用 Guacamole 降低） |
-| 輕量 Tunnel Client | 中（可用現成 SSH） |
 
 ---
 
-## 十一、待釐清問題
+## 十、待釐清問題
 
 ### A. 商業/策略層面
 
@@ -776,21 +649,12 @@ sessionManager := manager.NewSessionManager(provider)
 | **帳號權限** | 一般使用者 / sudo / root | sudo（需要重啟服務等） |
 | **密碼長度** | 8 / 12 / 16 / 更長 | 16 字元以上 |
 | **密碼字元集** | 純英數 / 含特殊字元 | 含特殊字元（更安全） |
-| **密碼可見次數** | 無限 / 只能看一次 | 建議只能看一次 |
 | **Session 時效** | 1小時 / 8小時 / 24小時 / 無限 | 24 小時（可調整） |
 | **閒置 timeout** | 無 / 30分鐘 / 1小時 | 1 小時（自動踢出） |
 
-### E. 密碼傳遞相關
-
-| 問題 | 選項 | 建議 |
-|------|------|------|
-| **密碼傳遞方式** | 客戶畫面顯示 / Session Manager / Workers / Access for Infrastructure | POC 用客戶畫面，正式用 Session Manager |
-| **是否需要 Session Manager** | 是 / 否 | 正式環境建議要 |
-| **Session Manager 部署** | 自建 / 雲端服務 | 視團隊能力決定 |
-
 ---
 
-## 十二、潛在風險與問題
+## 十一、潛在風險與問題
 
 ### A. Cloudflare 依賴風險
 
@@ -816,11 +680,11 @@ sessionManager := manager.NewSessionManager(provider)
 |------|------|------|----------|
 | 客戶不會操作 | 中 | 中 | 簡化 UI，一鍵啟動 |
 | 工程師不熟悉流程 | 中 | 低 | 文件 + 訓練 |
-| Session ID 溝通問題 | 中 | 低 | 自動通知或整合工單系統 |
+| 密碼/Session ID 溝通問題 | 中 | 低 | 簡化流程，盡量自動化 |
 
 ---
 
-## 十三、成本估算
+## 十二、成本估算
 
 ### 前期（Cloudflare 方案）
 
@@ -842,7 +706,7 @@ sessionManager := manager.NewSessionManager(provider)
 
 ---
 
-## 十四、時程估算
+## 十三、時程估算
 
 ### Phase 1：POC（1-2 週）
 
@@ -855,14 +719,14 @@ sessionManager := manager.NewSessionManager(provider)
 | 用 API 建立 Tunnel | 2-3 天 |
 | 整合驗證 | 2-3 天 |
 
-### Phase 2：開發（3-4 週）
+### Phase 2：開發（2-3 週）
 
 | 任務 | 時間 |
 |------|------|
-| Helper App 後端（API 整合） | 1 週 |
-| Helper App 前端（UI） | 1 週 |
-| Session Manager 後台 | 1 週 |
-| 測試 + 修正 | 1 週 |
+| Helper App 核心邏輯（API 整合） | 1 週 |
+| Helper App UI（Web Desktop 整合） | 1 週 |
+| 帳號管理和密碼生成 | 3-5 天 |
+| 測試 + 修正 | 3-5 天 |
 
 ### Phase 3：部署 + 上線（1-2 週）
 
@@ -874,7 +738,7 @@ sessionManager := manager.NewSessionManager(provider)
 
 ---
 
-## 十五、決策建議
+## 十四、決策建議
 
 ### 建議採用方案
 
@@ -893,11 +757,11 @@ Phase 3: 決定是否自建（視規模和需求）
 | 1 | 確認域名（現有或購買） | 管理層 |
 | 2 | 註冊 Cloudflare 帳號 | IT/DevOps |
 | 3 | 啟動 POC | 開發團隊 |
-| 4 | 釐清待決問題（第十一節） | 產品/管理層 |
+| 4 | 釐清待決問題（第十節） | 產品/管理層 |
 
 ---
 
-## 十六、附錄
+## 十五、附錄
 
 ### 術語對照表
 
@@ -910,7 +774,6 @@ Phase 3: 決定是否自建（視規模和需求）
 | **IdP (Identity Provider)** | 身份提供者，如 Google、GitHub |
 | **Browser Rendering** | 在瀏覽器內 render SSH/VNC 畫面 |
 | **Ingress** | 定義流量如何路由到本地服務 |
-| **Session** | 一次支援連線的生命週期 |
 | **Tunnel Token** | 讓 cloudflared 認證的密鑰 |
 
 ### 參考資料

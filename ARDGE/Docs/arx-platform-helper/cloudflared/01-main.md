@@ -4,9 +4,38 @@
 
 cloudflared 是 Cloudflare 的命令列工具，用於建立隧道、代理和存取控制。本文詳細說明各個全域選項的使用方式。
 
+## 命令
+
+  | 命令              | 說明                                                |
+  |-----------------|---------------------------------------------------|
+  | update          | 如果有新版本，更新代理程式                                     |
+  | version         | 列印版本號                                             |
+  | proxy-dns       | 執行 DNS over HTTPS 代理伺服器                           |
+  | tail            | 串流遠端 cloudflared 的日誌                              |
+  | service         | 管理 cloudflared 啟動代理程式                             |
+  | help, h         | 顯示命令列表或特定命令的說明                                    |
+  | Access          |                                                   |
+  | access, forward | access 子命令                                        |
+  | Tunnel          |                                                   |
+  | tunnel          | 使用 Cloudflare 隧道將私人服務暴露到網際網路或 Cloudflare 連線的私人使用者 |
+
 ---
 
 ## 全域選項詳解
+
+  | 選項                                    | 說明                                        | 預設值     |
+  |---------------------------------------|-------------------------------------------|---------|
+  | --output value                        | 日誌的輸出格式（default、json）                     | default |
+  | --credentials-file, --cred-file value | 讀取/寫入隧道凭証的檔案路徑                            | —       |
+  | --region value                        | Cloudflare Edge 區域。省略或設空白則連線到全球區域         | —       |
+  | --edge-ip-version value               | Cloudflare Edge IP 位址版本（4、6、auto）         | 4       |
+  | --edge-bind-address value             | 綁定到 IP 位址以連線到 Cloudflare Edge             | —       |
+  | --label value                         | 給特定連接器的有意義標籤。連接器啟動時會生成 UUID，此選項用於更好地識別連接器 | —       |
+  | --post-quantum, --pq                  | 建立實驗性後量子安全隧道                              | false   |
+  | --management-diagnostics              | 啟用深度診斷路由（/debug/pprof、/metrics 等）         | true    |
+  | --overwrite-dns, -f                   | 用此主機名覆寫現有 DNS 記錄                          | false   |
+  | --help, -h                            | 顯示說明                                      | false   |
+  | --version, -v, -V                     | 列印版本                                      | false   |
 
 ### 1. `--output value` 日誌輸出格式
 

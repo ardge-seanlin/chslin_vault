@@ -1,0 +1,80 @@
+name: Go Build
+
+on:
+  workflow_call:
+    inputs:
+      go-version:
+        description: 'Go version to use'
+        type: string
+        default: '1.25.4'
+      bake-file:
+        description: 'Path to docker-bake.hcl file (empty for default)'
+        type: string
+        default: ''
+      bake-target:
+        description: 'Docker buildx bake target'
+        type: string
+        default: 'binary-cross'
+      artifact-name:
+        description: 'Name of the artifact to upload'
+        type: string
+        default: 'binaries'
+      artifact-path:
+        description: 'Path to the artifacts'
+        type: string
+        default: 'bin/build/'
+      artifact-retention-days:
+        description: 'Number of days to retain artifacts'
+        type: number
+        default: 1
+      runner:
+        description: 'Runner to use'
+        type: string
+        default: 'ardge-arc-runner'
+    secrets:
+      ARDGE_GITHUB_PAT:
+        description: 'Token for accessing private repositories'
+        required: true
+
+jobs:
+  build-binary:
+    name: Build binary
+    runs-on: ${{ inputs.runner }}
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Create .netrc file for private repositories
+        run: |
+          cat > ~/.netrc << EOF
+          machine github.com
+          login x-access-token
+          password ${{ secrets.ARDGE_GITHUB_PAT }}
+          EOF
+
+      - name: Build binaries
+        env:
+          BUILDX_BAKE_ENTITLEMENTS_FS: 0
+        run: |
+          BAKE_ARGS=""
+          if [ -n "${{ inputs.bake-file }}" ]; then
+            BAKE_ARGS="-f ${{ inputs.bake-file }}"
+          fi
+          VERSION=$(cat VERSION) docker buildx bake $BAKE_ARGS ${{ inputs.bake-target }}
+
+      - name: Upload artifacts
+        if: env.ACT != 'true'
+        uses: actions/upload-artifact@v5
+        with:
+          name: ${{ inputs.artifact-name }}
+          path: ${{ inputs.artifact-path }}
+          retention-days: ${{ inputs.artifact-retention-days }}

@@ -1,0 +1,60 @@
+name: Go Lint
+
+on:
+  workflow_call:
+    inputs:
+      go-version:
+        description: 'Go version to use'
+        type: string
+        default: '1.25.4'
+      golangci-lint-version:
+        description: 'golangci-lint version'
+        type: string
+        default: 'v2.6.2'
+      timeout:
+        description: 'Lint timeout'
+        type: string
+        default: '5m'
+      working-directory:
+        description: 'Working directory'
+        type: string
+        default: '.'
+      runner:
+        description: 'Runner to use'
+        type: string
+        default: 'ardge-arc-runner'
+    secrets:
+      ARDGE_GITHUB_PAT:
+        description: 'Token for accessing private repositories'
+        required: true
+
+jobs:
+  golangci-lint:
+    name: Code linting with golangci-lint
+    runs-on: ${{ inputs.runner }}
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Create .netrc file for private repositories
+        run: |
+          cat > ~/.netrc << EOF
+          machine github.com
+          login x-access-token
+          password ${{ secrets.ARDGE_GITHUB_PAT }}
+          EOF
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: ${{ inputs.go-version }}
+
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v9
+        with:
+          version: ${{ inputs.golangci-lint-version }}
+          args: --timeout=${{ inputs.timeout }}
+          working-directory: ${{ inputs.working-directory }}

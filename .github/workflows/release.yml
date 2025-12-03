@@ -1,0 +1,21 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+      - 'release/v*'
+      - 'support/*'
+    tags:
+      - 'v*'
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  docker:
+    uses: ardge-labs/github-workflows/.github/workflows/docker-build.yml@v1
+    with:
+      image-name: ${{ github.repository }}
+    secrets:
+      ARDGE_GITHUB_PAT: ${{ secrets.ARDGE_GITHUB_PAT }}

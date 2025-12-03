@@ -1,0 +1,101 @@
+name: GitHub Release
+
+on:
+  workflow_call:
+    inputs:
+      go-version:
+        description: 'Go version to use'
+        type: string
+        default: '1.25.4'
+      binary-name:
+        description: 'Name of the binary to build'
+        type: string
+        required: true
+      binary-path:
+        description: 'Path to the main package (e.g., ./cmd/myapp)'
+        type: string
+        required: true
+      version-package:
+        description: 'Package path for version ldflags (e.g., github.com/org/repo/cmd/myapp/cmd)'
+        type: string
+        required: true
+      platforms:
+        description: 'JSON array of target platforms'
+        type: string
+        default: '["linux/amd64", "linux/arm64", "darwin/arm64"]'
+      generate-release-notes:
+        description: 'Auto-generate release notes'
+        type: boolean
+        default: true
+      runner:
+        description: 'Runner to use'
+        type: string
+        default: 'ardge-arc-runner'
+    secrets:
+      ARDGE_GITHUB_PAT:
+        description: 'Token for accessing private repositories'
+        required: false
+
+jobs:
+  release-binaries:
+    name: Build binaries and create GitHub Release
+    runs-on: ${{ inputs.runner }}
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Create .netrc file for private repositories
+        run: |
+          cat > ~/.netrc << EOF
+          machine github.com
+          login x-access-token
+          password ${{ secrets.ARDGE_GITHUB_PAT }}
+          EOF
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: ${{ inputs.go-version }}
+
+      - name: Set VERSION from tag
+        run: |
+          echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
+          echo "GIT_COMMIT=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
+          echo "BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> $GITHUB_ENV
+
+      - name: Build binaries
+        run: |
+          mkdir -p dist
+
+          LDFLAGS="-s -w -X ${{ inputs.version-package }}.version=${{ env.VERSION }}"
+
+          platforms='${{ inputs.platforms }}'
+          echo "$platforms" | jq -r '.[]' | while read platform; do
+            GOOS="${platform%/*}"
+            GOARCH="${platform#*/}"
+            binary="${{ inputs.binary-name }}"
+            archive="${{ inputs.binary-name }}-${GOOS}-${GOARCH}.tar.gz"
+
+            echo "Building ${archive}..."
+            GOOS=$GOOS GOARCH=$GOARCH go build -ldflags "$LDFLAGS" -o "${binary}" ${{ inputs.binary-path }}
+
+            tar -czvf "dist/${archive}" "${binary}"
+            rm "${binary}"
+          done
+
+          cd dist
+          sha256sum *.tar.gz > checksums.txt
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: ${{ inputs.generate-release-notes }}
+          files: |
+            dist/*
+        env:
+          GITHUB_TOKEN: ${{ github.token }}

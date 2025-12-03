@@ -1,0 +1,13 @@
+name: Daily Image Cleanup
+
+on:
+  schedule:
+    # Every day at 01:30am UTC+8 (17:30 UTC previous day)
+    - cron: '30 17 * * *'
+  workflow_dispatch:
+
+jobs:
+  cleanup:
+    uses: ardge-labs/github-workflows/.github/workflows/ghcr-cleanup.yml@v1
+    with:
+      delete-untagged: true

@@ -1,0 +1,36 @@
+name: GHCR Cleanup
+
+on:
+  workflow_call:
+    inputs:
+      delete-untagged:
+        description: 'Delete untagged images'
+        type: boolean
+        default: true
+      keep-n-tagged:
+        description: 'Number of tagged images to keep (0 = keep all)'
+        type: number
+        default: 0
+      older-than:
+        description: 'Delete images older than this (e.g., 30 days)'
+        type: string
+        default: ''
+      runner:
+        description: 'Runner to use'
+        type: string
+        default: 'ardge-arc-runner'
+
+jobs:
+  ghcr-cleanup:
+    name: Cleanup ghcr.io images
+    runs-on: ${{ inputs.runner }}
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Cleanup untagged images
+        uses: dataaxiom/ghcr-cleanup-action@v1
+        with:
+          delete-untagged: ${{ inputs.delete-untagged }}
+          keep-n-tagged: ${{ inputs.keep-n-tagged }}
+          older-than: ${{ inputs.older-than }}

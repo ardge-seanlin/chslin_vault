@@ -1,0 +1,61 @@
+name: Go Integration Test
+
+on:
+  workflow_call:
+    inputs:
+      go-version:
+        description: 'Go version to use'
+        type: string
+        default: '1.25.4'
+      mise-tools:
+        description: 'JSON array of mise tools to install (e.g., ["grpcurl@1.9.3", "protoc@33.1"])'
+        type: string
+        default: '[]'
+      test-command:
+        description: 'Integration test command to run'
+        type: string
+        default: 'make test-integration'
+      runner:
+        description: 'Runner to use'
+        type: string
+        default: 'ardge-arc-runner'
+    secrets:
+      ARDGE_GITHUB_PAT:
+        description: 'Token for accessing private repositories'
+        required: true
+
+jobs:
+  integration:
+    name: Run integration tests
+    runs-on: ${{ inputs.runner }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Create .netrc file for private repositories
+        run: |
+          cat > ~/.netrc << EOF
+          machine github.com
+          login x-access-token
+          password ${{ secrets.ARDGE_GITHUB_PAT }}
+          EOF
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: ${{ inputs.go-version }}
+
+      - name: Install mise
+        if: inputs.mise-tools != '[]'
+        uses: jdx/mise-action@v3
+
+      - name: Install tools via mise
+        if: inputs.mise-tools != '[]'
+        run: |
+          tools=$(echo '${{ inputs.mise-tools }}' | jq -r '.[]')
+          if [ -n "$tools" ]; then
+            mise use $tools
+          fi
+
+      - name: Run integration tests
+        run: ${{ inputs.test-command }}

@@ -1,0 +1,89 @@
+name: Go Test
+
+on:
+  workflow_call:
+    inputs:
+      go-version:
+        description: 'Go version to use'
+        type: string
+        default: '1.25.4'
+      check-tidy:
+        description: 'Check if go.mod is tidy'
+        type: boolean
+        default: true
+      coverage-comment:
+        description: 'Comment PR with coverage report'
+        type: boolean
+        default: true
+      test-command:
+        description: 'Test command to run'
+        type: string
+        default: 'make test'
+      runner:
+        description: 'Runner to use'
+        type: string
+        default: 'ardge-arc-runner'
+    secrets:
+      ARDGE_GITHUB_PAT:
+        description: 'Token for accessing private repositories'
+        required: true
+
+jobs:
+  test:
+    name: Run tests
+    runs-on: ${{ inputs.runner }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Create .netrc file for private repositories
+        run: |
+          cat > ~/.netrc << EOF
+          machine github.com
+          login x-access-token
+          password ${{ secrets.ARDGE_GITHUB_PAT }}
+          EOF
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: ${{ inputs.go-version }}
+
+      - name: Run go mod tidy
+        if: inputs.check-tidy
+        run: make tidy
+
+      - name: Check if go.mod is tidy
+        if: inputs.check-tidy
+        run: |
+          if [ -n "$(git status --porcelain go.mod go.sum)" ]; then
+            echo "go.mod or go.sum is not tidy. Please run 'make tidy'"
+            git diff go.mod go.sum
+            exit 1
+          fi
+
+      - name: Run tests
+        run: ${{ inputs.test-command }}
+
+      - name: Generate coverage report
+        if: inputs.coverage-comment && github.event_name == 'pull_request'
+        run: |
+          go tool cover -func=coverage.out | tee coverage.txt
+          COVERAGE=$(go tool cover -func=coverage.out | grep total | awk '{print $3}')
+          echo "COVERAGE=$COVERAGE" >> $GITHUB_ENV
+          echo "### Test Coverage: $COVERAGE" >> $GITHUB_STEP_SUMMARY
+
+      - name: Comment PR with coverage
+        if: inputs.coverage-comment && env.ACT != 'true' && github.event_name == 'pull_request'
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const coverage = process.env.COVERAGE;
+            const body = `## 📊 Test Coverage Report\n\n**Coverage:** ${coverage}\n\n✅ Tests passed successfully`;
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: body
+            })

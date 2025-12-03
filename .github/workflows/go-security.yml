@@ -1,0 +1,55 @@
+name: Go Security
+
+on:
+  workflow_call:
+    inputs:
+      go-version:
+        description: 'Go version to use'
+        type: string
+        default: '1.25.4'
+      trivy-severity:
+        description: 'Trivy severity levels to scan'
+        type: string
+        default: 'CRITICAL,HIGH,MEDIUM,LOW,UNKNOWN'
+      trivy-exit-code:
+        description: 'Exit code when vulnerabilities are found (0 = no fail, 1 = fail)'
+        type: number
+        default: 0
+      runner:
+        description: 'Runner to use'
+        type: string
+        default: 'ardge-arc-runner'
+
+jobs:
+  govulncheck:
+    name: Vulnerability scan with govulncheck
+    runs-on: ${{ inputs.runner }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: ${{ inputs.go-version }}
+
+      - name: Run govulncheck
+        uses: golang/govulncheck-action@v1
+        with:
+          go-version-input: ${{ inputs.go-version }}
+
+  trivy:
+    name: Vulnerability scan with Trivy
+    runs-on: ${{ inputs.runner }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@0.33.1
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'table'
+          severity: ${{ inputs.trivy-severity }}
+          exit-code: ${{ inputs.trivy-exit-code }}
